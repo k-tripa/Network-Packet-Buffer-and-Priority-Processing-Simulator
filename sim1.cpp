@@ -245,7 +245,7 @@ vector<Packet> generatePackets(size_t n, double lambda, unsigned seed) {
     return v;
 }
 
-.
+
 vector<Packet> loadFile(const string& path) {
     vector<Packet> v;
     ifstream in(path);
