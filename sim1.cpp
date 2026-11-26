@@ -1,34 +1,3 @@
-// Network Packet Buffer & Priority Processing Simulator  (basic version)
-// Data structures: Priority Queue (binary min-heap) + Queue (arrival stream)
-//
-// Build:  g++ -std=c++11 -O2 -Wall -Wextra packet_sim_basic.cpp -o packet_sim_basic
-//         (any standard from C++11 up works; no extra libraries are needed)
-// Run:    ./packet_sim_basic            (tests + demo trace + experiment + CSV files)
-//         ./packet_sim_basic test | demo | exp
-//         ./packet_sim_basic csv [packets] [fixed_lambda] [fixed_buffer]   (writes CSV files for plotting)
-//         ./packet_sim_basic file <arrivals.txt> <buffer_capacity>
-//
-// Model
-//  - One router output port transmits one packet at a time.
-//  - 4 priority levels; 1 is the highest, 4 the lowest.
-//  - Equal priorities are served FIFO (arrival sequence number breaks ties).
-//  - Service time of a packet = size in bits / LINK_BPS.
-//  - Buffer capacity B = number of WAITING packets (the one being transmitted
-//    is not counted). If the buffer is full, the arriving packet is dropped.
-//  - If an arrival and a departure happen at the same instant, the arrival is
-//    handled first.
-//  - Arrivals are a Poisson process: exponential gaps with rate lambda
-//    (packets per second). Times are in seconds.
-//
-// Pseudocode
-//  ARRIVE(p):  if router idle          -> start service(p)
-//              else if heap.size < B   -> heap.push(p)
-//              else                    -> drop p
-//  DEPART():   router becomes idle; processed++
-//              if heap not empty       -> start service(heap.pop())
-//  PUSH(x):    append x at the end; sift up while x goes before its parent
-//  POP():      take the root; move the last element to the root; sift down
-
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -57,7 +26,7 @@ const double LINK_BPS = 1000000.0;                              // 1 Mbps
 const double MEAN_SIZE_BYTES = (64 + 1500) / 2.0;               // sizes ~ U[64, 1500]
 const double SERVICE_RATE = LINK_BPS / (MEAN_SIZE_BYTES * 8.0); // ~159.85 packets/s
 
-// ---------------------------------------------------------------- Packet ----
+//Packet 
 struct Packet {
     long id = 0;          // arrival number (for display)
     double arrival = 0;   // arrival time (s)
@@ -67,14 +36,14 @@ struct Packet {
     long seq = 0;         // assigned on arrival, keeps FIFO among equal priorities
 };
 
-struct PacketOrder {  // true if a must be served before b
+struct PacketOrder {  
     bool operator()(const Packet& a, const Packet& b) const {
         if (a.priority != b.priority) return a.priority < b.priority;
         return a.seq < b.seq;
     }
 };
 
-// ----------------------------------------------------------- Binary heap ----
+// Binary heap 
 template <class T, class Less>
 class BinaryHeap {
     vector<T> a;
@@ -126,7 +95,7 @@ public:
 
 using PacketBuffer = BinaryHeap<Packet, PacketOrder>;
 
-// --------------------------------------------------------------- Metrics ----
+//Metrics 
 struct Metrics {
     size_t capacity = 0;
     long arrived = 0, processed = 0, dropped = 0;
@@ -160,7 +129,7 @@ static string bufferString(const PacketBuffer& b) {
     return os.str();
 }
 
-// ------------------------------------------------------------- Simulator ----
+// Simulator 
 Metrics simulate(vector<Packet> pkts, size_t capacity, bool verbose = false,
                  vector<long>* serviceOrder = nullptr) {
     stable_sort(pkts.begin(), pkts.end(),
@@ -204,7 +173,7 @@ Metrics simulate(vector<Packet> pkts, size_t capacity, bool verbose = false,
     while (!arrivals.empty() || busy) {
         double ta = arrivals.empty() ? INF : arrivals.front().arrival;
 
-        if (ta <= depart) {  // ---- arrival event
+        if (ta <= depart) {  //arrival event
             now = ta;
             m.occupancyArea += buf.size() * (now - last);
             last = now;
@@ -230,7 +199,7 @@ Metrics simulate(vector<Packet> pkts, size_t capacity, bool verbose = false,
                 cout << "t=" << setw(8) << now << "  ARRIVE #" << p.id << " (p" << p.priority
                      << ", " << p.size << "B) " << what << "\n           buffer "
                      << buf.size() << "/" << capacity << " " << bufferString(buf) << "\n";
-        } else {  // ---- departure event
+        } else {  // departure event
             now = depart;
             m.occupancyArea += buf.size() * (now - last);
             last = now;
@@ -253,11 +222,7 @@ Metrics simulate(vector<Packet> pkts, size_t capacity, bool verbose = false,
     return m;
 }
 
-// ------------------------------------------------------------ Generation ----
-// Poisson arrivals at rate lambda (packets per second): the gaps between
-// packets are independent and exponential, gap = -ln(U) / lambda.
-// Priorities 1..4 are drawn with probabilities 10%, 20%, 30%, 40%.
-// Sizes are uniform in [64, 1500] bytes; service = size * 8 / LINK_BPS.
+// Generation 
 vector<Packet> generatePackets(size_t n, double lambda, unsigned seed) {
     mt19937_64 rng(seed);
     exponential_distribution<double> gap(lambda);
@@ -280,8 +245,7 @@ vector<Packet> generatePackets(size_t n, double lambda, unsigned seed) {
     return v;
 }
 
-// File format, one packet per line: <arrival_time_s> <priority 1..4> <size_bytes>
-// Lines starting with # are ignored.
+.
 vector<Packet> loadFile(const string& path) {
     vector<Packet> v;
     ifstream in(path);
@@ -294,7 +258,7 @@ vector<Packet> loadFile(const string& path) {
         Packet p;
         if (!(is >> p.arrival >> p.priority >> p.size) || p.priority < 1 ||
             p.priority > NUM_PRIORITIES || p.size <= 0) {
-            skipped++;  // bad line: wrong format, priority not in 1..4, or size <= 0
+            skipped++;  
             continue;
         }
         p.id = id++;
@@ -305,7 +269,7 @@ vector<Packet> loadFile(const string& path) {
     return v;
 }
 
-// ---------------------------------------------------------------- Output ----
+// Output 
 void printMetrics(const Metrics& m, const vector<long>* order = nullptr) {
     cout << fixed << setprecision(4);
     if (order) {
@@ -326,7 +290,7 @@ void printMetrics(const Metrics& m, const vector<long>* order = nullptr) {
              << m.dropByPrio[p] << ", avg wait " << m.avgWaitPrio(p) * 1000 << " ms\n";
 }
 
-// ----------------------------------------------------------------- Tests ----
+// Tests 
 static int g_pass = 0, g_fail = 0;
 #define CHECK(cond, name)                                         \
     do {                                                          \
@@ -437,7 +401,7 @@ int runTests() {
     return g_fail;
 }
 
-// ------------------------------------------------------------ Demo & exp ----
+//Demo & exp 
 void runDemo() {
     cout << "=== Demo trace: 12 packets, lambda = 300 packets/s, buffer = 3 ===\n\n";
     vector<long> order;
@@ -445,8 +409,7 @@ void runDemo() {
     printMetrics(m, &order);
 }
 
-// Compare three arrival rates (light, near capacity, overloaded) at three
-// workload sizes. Buffer capacity is fixed.
+
 void runExperiments() {
     const size_t B = 20;
     const double lambdas[] = {100, 150, 200};
@@ -469,11 +432,8 @@ void runExperiments() {
     }
 }
 
-// ------------------------------------------------------------------ CSV ----
-// Writes two CSV files that plot_results.py turns into graphs:
-//   buffer_vs_drop.csv  : arrival rate fixed, buffer capacity varied
-//   arrival_vs_drop.csv : buffer capacity fixed, arrival rate varied
-// Every row holds the same columns, so each graph can show all the metrics.
+// CSV 
+
 static const char* CSV_HEADER =
     "lambda_pps,buffer,packets,processed,dropped,drop_pct,avg_wait_ms,buffer_util_pct,throughput_pps\n";
 
@@ -550,6 +510,6 @@ int main(int argc, char** argv) {
     runDemo();
     cout << "\n";
     runExperiments();
-    runCsv(10000, 150, 20);  // also write the CSV files when run with no arguments
+    runCsv(10000, 150, 20); 
     return fails ? 1 : 0;
 }
